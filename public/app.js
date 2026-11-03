@@ -197,6 +197,10 @@
     $("#sections").innerHTML = html;
     wirePreviews();
     if (isLight()) loadStreams();
+    for (const box of $$("#sections .stream-thumb")) {
+      if (previewObserver) previewObserver.observe(box); else { previewQueue.push(box); }
+    }
+    pumpPreviews();
     $("#results").hidden = false;
     applyView();
   }
@@ -327,8 +331,16 @@
          <p class="muted-note">Straight from the site, and its link expires after a while, so download it now. If the video opens in a new tab instead, IDM will offer to grab it, or use the ⋮ menu on the video and choose Download.</p></div>`
       : `<div class="reel-actions"><a class="btn ghost" href="${esc(it.url)}" target="_blank" rel="noreferrer noopener">Open on the site</a>
          <p class="muted-note">This site splits video and audio or locks its links, so it needs the full version of DE-AI (or IDM's own download button on the video).</p></div>`;
+    const thumbBox = stream && !it.thumb
+      ? `<div class="reel-thumb stream-thumb" data-stream="${esc(it.url)}">
+           <span class="ph">${ICON.film}</span>
+           <video muted playsinline preload="none" disablepictureinpicture></video>
+           <button type="button" class="play-btn" aria-label="Play a preview" hidden></button>
+           <span class="dur" hidden></span>
+         </div>`
+      : `<div class="reel-thumb"><span class="ph">${it.kind === "audio" ? ICON.wave : ICON.film}</span>${thumb}${it.duration ? `<span class="dur">${duration(it.duration)}</span>` : ""}</div>`;
     return `<article class="reel" data-id="${it.id}">
-      <div class="reel-thumb"><span class="ph">${it.kind === "audio" ? ICON.wave : ICON.film}</span>${thumb}${it.duration ? `<span class="dur">${duration(it.duration)}</span>` : ""}</div>
+      ${thumbBox}
       <div class="reel-body">
         <h3>${esc(it.title || streamName(it.url) || it.url)}</h3>
         <p class="meta">${meta}</p>
@@ -356,6 +368,85 @@
     } catch { return ""; }
   }
   const streamJobs = new Map();
+
+  // Previews: as a stream card scrolls into view, load a few seconds of its lowest
+  // quality and show a frame from about 20% in. Clicking plays it in the card.
+  let hlsLib = null;
+  function loadHlsLib() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (!hlsLib) hlsLib = new Promise((res, rej) => {
+      const sc = document.createElement("script");
+      sc.src = "/vendor/hls.light.min.js"; sc.onload = () => res(window.Hls); sc.onerror = rej;
+      document.head.appendChild(sc);
+    });
+    return hlsLib;
+  }
+  const previewQueue = []; let previewsRunning = 0;
+  const previewObserver = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { previewObserver.unobserve(e.target); previewQueue.push(e.target); }
+    pumpPreviews();
+  }, { rootMargin: "300px" }) : null;
+  function pumpPreviews() {
+    while (previewsRunning < 3 && previewQueue.length) {
+      previewsRunning++;
+      loadPreview(previewQueue.shift()).finally(() => { previewsRunning--; pumpPreviews(); });
+    }
+  }
+  async function loadPreview(box) {
+    const video = $("video", box);
+    const native = !!video.canPlayType("application/vnd.apple.mpegurl");
+    let hls = null;
+    try {
+      // Preview from the smallest version of the stream to save data.
+      let url = box.dataset.stream;
+      try {
+        const list = await DEAIStream.variants(url);
+        if (list.length) url = list[list.length - 1].url;
+      } catch { /* fall back to the stream as given */ }
+      const Hls = native ? null : await loadHlsLib();
+      if (!native && !(Hls && Hls.isSupported())) return;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("slow")), 25000);
+        video.addEventListener("loadedmetadata", () => {
+          const d = video.duration;
+          if (isFinite(d) && d > 0) { const dur = $(".dur", box); dur.textContent = duration(d); dur.hidden = false; }
+          video.currentTime = isFinite(d) && d > 4 ? Math.min(d * 0.2, 60) : 0;
+        }, { once: true });
+        video.addEventListener("seeked", () => { clearTimeout(timer); resolve(); }, { once: true });
+        video.addEventListener("error", () => { clearTimeout(timer); reject(new Error("media")); }, { once: true });
+        if (native) { video.preload = "metadata"; video.src = url; }
+        else {
+          hls = new Hls({ maxBufferLength: 4, maxMaxBufferLength: 8, capLevelToPlayerSize: false, testBandwidth: false,
+            xhrSetup: (xhr) => { xhr.withCredentials = false; } });
+          hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) { clearTimeout(timer); reject(new Error(data.details)); } });
+          hls.loadSource(url); hls.attachMedia(video);
+        }
+      });
+      if (hls) hls.stopLoad();  // keep the frame, stop downloading
+      box.classList.add("has-preview");
+      box._hls = hls;
+      $(".play-btn", box).hidden = false;
+    } catch {
+      if (hls) hls.destroy();
+      box.classList.add("no-preview");
+    }
+  }
+  function playPreview(box) {
+    // Switch from the small preview to the full stream (best quality the connection allows).
+    const video = $("video", box), at = video.currentTime, full = box.dataset.stream;
+    $(".play-btn", box).hidden = true;
+    video.muted = false; video.controls = true;
+    const go = () => { try { video.currentTime = at; } catch { /* ignore */ } video.play().catch(() => {}); };
+    if (box._hls) {
+      const hls = box._hls;
+      hls.config.maxBufferLength = 30; hls.config.maxMaxBufferLength = 60;
+      hls.loadSource(full);
+      hls.once(window.Hls.Events.MANIFEST_PARSED, () => { hls.startLoad(at); go(); });
+    } else {
+      video.src = full;
+      video.addEventListener("loadedmetadata", go, { once: true });
+    }
+  }
   async function loadStreams() {
     if (!window.DEAIStream) return;
     for (const box of $$("#sections .stream-box")) {
@@ -599,6 +690,7 @@
     const t = e.target;
     const reelBtn = t.closest(".reel-dl"); if (reelBtn) { downloadReel(reelBtn.closest(".reel")); return; }
     const sBtn = t.closest(".stream-dl"); if (sBtn) { downloadStream(sBtn.closest(".reel")); return; }
+    const pBtn = t.closest(".play-btn"); if (pBtn) { playPreview(pBtn.closest(".stream-thumb")); return; }
     const cBtn = t.closest(".stream-copy");
     if (cBtn) { navigator.clipboard.writeText(cBtn.dataset.url).then(() => toast("Stream link copied. IDM and VLC can open it."), () => toast("Couldn't copy the link.", "error")); return; }
     const sel = t.closest(".sel-group");

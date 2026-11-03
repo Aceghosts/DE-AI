@@ -304,3 +304,12 @@ body.has-results .deep .hint { display: none; }
 
 .muted-note { font-size: 13px; color: var(--muted); max-width: 52ch; }
 .quality .rate { font-weight: 400; color: var(--muted); margin-left: 2px; font-size: 12px; }
+
+/* stream previews */
+.stream-thumb video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; opacity: 0; transition: opacity .25s; }
+.stream-thumb.has-preview video { opacity: 1; }
+.stream-thumb.has-preview .ph { display: none; }
+.stream-thumb:not(.has-preview):not(.no-preview) .ph::after { content: "Loading preview…"; position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 12px; }
+.play-btn { position: absolute; inset: 0; margin: auto; width: 56px; height: 56px; border-radius: 50%; border: 0; background: var(--scrim); display: grid; place-items: center; cursor: pointer; }
+.play-btn::after { content: ""; border-left: 16px solid #fff; border-top: 10px solid transparent; border-bottom: 10px solid transparent; margin-left: 4px; }
+.play-btn:hover { background: rgba(10, 14, 20, .88); }
