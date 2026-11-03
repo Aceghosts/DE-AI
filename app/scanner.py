@@ -428,20 +428,32 @@ def ytdlp_probe(url: str) -> dict | None:
 
 
 def _direct_format(formats: list[dict], has_video: bool) -> dict | None:
-    """Best single file that already has both video and audio (or best audio), fetchable over plain HTTP."""
+    """Best single file that already has both video and audio (or best audio), fetchable over plain HTTP.
+
+    Many sites (Instagram, Facebook, Twitter...) don't label the codecs of their ready-made MP4s,
+    so an unknown codec counts as present; only an explicit "none" rules a format out.
+    """
     cands = []
     for f in formats:
-        if not f.get("url") or not str(f.get("protocol", "https")).startswith("http"):
+        url = f.get("url")
+        proto = str(f.get("protocol") or "https")
+        if not url or not proto.startswith("http") or "m3u8" in proto or "dash" in proto:
+            continue
+        if f.get("ext") in ("m3u8", "mpd") or ".m3u8" in url or ".mpd" in url:
             continue
         v, a = f.get("vcodec"), f.get("acodec")
-        if has_video and (v in (None, "none") or a == "none"):
-            continue
-        if not has_video and a in (None, "none"):
-            continue
-        cands.append(f)
+        if has_video:
+            if v == "none" or a == "none":
+                continue
+            known = v not in (None, "") and a not in (None, "")
+        else:
+            if a == "none":
+                continue
+            known = a not in (None, "")
+        cands.append((known, f))
     if not cands:
         return None
-    best = max(cands, key=lambda f: ((f.get("height") or 0), (f.get("tbr") or 0)))
+    known, best = max(cands, key=lambda kf: (kf[0], kf[1].get("height") or 0, kf[1].get("tbr") or 0, kf[1].get("quality") or 0))
     return {"url": best["url"], "ext": best.get("ext"), "height": best.get("height"),
             "size": best.get("filesize") or best.get("filesize_approx")}
 

@@ -314,7 +314,7 @@
     const d = it.direct;
     const lightActions = d
       ? `<div class="reel-actions"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noreferrer noopener" download>${ICON.down.replace("<svg", '<svg width="18" height="18"')}Download${d.height ? " " + d.height + "p" : ""}</a>
-         <p class="muted-note">Straight from the site. If it opens instead of downloading, right-click it and choose “Download with IDM”.</p></div>`
+         <p class="muted-note">Straight from the site, and its link expires after a while, so download it now. If the video opens in a new tab instead, IDM will offer to grab it, or use the ⋮ menu on the video and choose Download.</p></div>`
       : `<div class="reel-actions"><a class="btn ghost" href="${esc(it.url)}" target="_blank" rel="noreferrer noopener">Open on the site</a>
          <p class="muted-note">This site splits video and audio or locks its links, so it needs the full version of DE-AI (or IDM's own download button on the video).</p></div>`;
     return `<article class="reel" data-id="${it.id}">
