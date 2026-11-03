@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DE-AI — Download Everything</title>
+  <meta name="description" content="Paste any link, mark the media you want, download it.">
+  <meta name="theme-color" content="#DCE2E7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#10161C" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='4' width='28' height='24' rx='4' fill='%232440C8'/%3E%3Cpath d='M16 9v11m-5-5 5 5 5-5' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M5 7 C13 5 22 6 27 7 C28 14 27 21 27 25 C19 27 11 26 5 25 C4 18 4 12 5 7Z' fill='none' stroke='%23F2C230' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="bar" id="bar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="/" aria-label="DE-AI home">
+        <span class="wordmark">DE-AI</span>
+        <span class="brand-sub">Download everything</span>
+      </a>
+
+      <form id="scan-form" class="scan" autocomplete="off">
+        <label for="url" class="sr-only">Link to a page, post, video or file</label>
+        <div class="scan-field">
+          <svg class="scan-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+          <input id="url" name="url" type="text" inputmode="url" spellcheck="false" enterkeyhint="go"
+                 placeholder="Paste a link to a page, post, video or file">
+          <button type="button" id="paste-btn" class="chip-btn">Paste</button>
+        </div>
+        <button type="submit" id="scan-btn" class="btn primary">Find media</button>
+        <label class="deep" id="deep-label">
+          <input type="checkbox" id="deep">
+          <span>Open the page in a browser first <span class="hint">· slower, finds more on sites built with JavaScript</span></span>
+        </label>
+      </form>
+    </div>
+  </header>
+
+  <main>
+    <!-- Landing -->
+    <section id="landing" class="landing wrap">
+      <ol class="steps">
+        <li><span class="step-n">1</span><div><b>Paste a link</b><p>Any page, post or video — or a direct file link.</p></div></li>
+        <li><span class="step-n">2</span><div><b>Mark what you want</b><p>Every image, video, audio file and document is laid out like a contact sheet.</p></div></li>
+        <li><span class="step-n">3</span><div><b>Download</b><p id="step3">One at a time, or everything you marked as a single ZIP.</p></div></li>
+      </ol>
+      <div class="sources">
+        <p class="sources-label" id="sources-label">Also picks the quality on video sites</p>
+        <ul class="source-list">
+          <li>YouTube</li><li>Instagram</li><li>TikTok</li><li>X</li><li>Facebook</li><li>Vimeo</li><li>SoundCloud</li><li>Reddit</li><li>+1,800 more</li>
+        </ul>
+      </div>
+      <div id="recent" class="recent" hidden>
+        <h2>Recent links</h2>
+        <ul id="recent-list"></ul>
+      </div>
+      <p id="health-note" class="health-note" hidden></p>
+      <p id="light-note" class="health-note" hidden>This is the light version: DE-AI finds the media, and downloads come straight from the original site to your browser or IDM. To grab many at once, mark them and save the links for IDM. Picking video quality, MP3 and ZIPs need the full version.</p>
+    </section>
+
+    <!-- Loading / error -->
+    <section id="status" class="status wrap" hidden aria-live="polite"></section>
+
+    <!-- Results -->
+    <section id="results" class="results wrap" hidden>
+      <div class="results-head">
+        <div class="page-id">
+          <span class="site-icon" id="site-icon" aria-hidden="true"></span>
+          <div class="page-text">
+            <h1 id="page-title"></h1>
+            <p id="page-meta"></p>
+          </div>
+        </div>
+        <ul id="notes" class="notes"></ul>
+        <div class="toolbar">
+          <div id="filters" class="filters" role="tablist" aria-label="Show"></div>
+          <div class="toolbar-right">
+            <label class="select-wrap"><span class="sr-only">Sort</span>
+              <select id="sort">
+                <option value="page">Page order</option>
+                <option value="large">Largest first</option>
+                <option value="small">Smallest first</option>
+                <option value="name">Name</option>
+              </select>
+            </label>
+            <label class="switch"><input type="checkbox" id="hide-tiny" checked><span>Hide icons and tiny images</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div id="sections"></div>
+
+      <div id="empty" class="empty" hidden></div>
+    </section>
+  </main>
+
+  <!-- Selection tray -->
+  <div id="tray" class="tray" hidden>
+    <div class="wrap tray-inner">
+      <div class="tray-text">
+        <p id="tray-count"></p>
+        <div class="tray-job" id="tray-job" hidden><div class="meter"><i></i></div><span id="tray-msg"></span></div>
+      </div>
+      <div class="tray-actions">
+        <button type="button" id="clear-sel" class="btn ghost-dark">Clear</button>
+        <button type="button" id="copy-btn" class="btn ghost-dark" hidden>Copy links</button>
+        <button type="button" id="zip-btn" class="btn pencil">Download as ZIP</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Viewer -->
+  <dialog id="viewer" class="viewer" aria-label="Preview">
+    <div class="viewer-stage" id="viewer-stage"></div>
+    <div class="viewer-bar">
+      <div class="viewer-info"><p id="viewer-name"></p><p id="viewer-meta"></p></div>
+      <div class="viewer-actions">
+        <button type="button" class="icon-btn" id="viewer-prev" aria-label="Previous" title="Previous (←)"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button type="button" class="icon-btn" id="viewer-next" aria-label="Next" title="Next (→)"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+        <button type="button" class="btn ghost" id="viewer-mark">Mark</button>
+        <a class="btn ghost" id="viewer-open" target="_blank" rel="noopener noreferrer">Open original</a>
+        <button type="button" class="btn primary" id="viewer-dl">Download</button>
+        <button type="button" class="icon-btn" id="viewer-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
