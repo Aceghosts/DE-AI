@@ -21,6 +21,8 @@ The light version is what runs on Vercel: Vercel functions can't send responses 
 2. On vercel.com choose **Add New → Project**, import the repository, keep the defaults (no framework, no build command) and click **Deploy**.
 3. Every push to the main branch redeploys automatically.
 
+`vercel.json` runs the server in Mumbai (`bom1`). That matters for speed: sites like Instagram hand out download links for the CDN closest to whoever asked, so a server near your team gives your team nearby, fast links. Change it to the region nearest your users (for example `fra1` Frankfurt, `iad1` Washington, `sin1` Singapore).
+
 How Vercel runs it: `pyproject.toml` points Vercel at `vercel_app.py`, which starts the app in light mode (`DEAI_LIGHT=1`). The page is served from `public/` by Vercel's CDN, and Vercel installs the small `requirements.txt` list.
 
 Optional settings in Vercel → Project → Settings → Environment Variables:

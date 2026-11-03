@@ -303,3 +303,4 @@ body.has-results .deep .hint { display: none; }
 }
 
 .muted-note { font-size: 13px; color: var(--muted); max-width: 52ch; }
+.quality .rate { font-weight: 400; color: var(--muted); margin-left: 2px; font-size: 12px; }

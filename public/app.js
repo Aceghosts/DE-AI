@@ -196,6 +196,7 @@
     }
     $("#sections").innerHTML = html;
     wirePreviews();
+    if (isLight()) loadStreams();
     $("#results").hidden = false;
     applyView();
   }
@@ -312,7 +313,16 @@
     const thumb = it.thumb ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(fileUrl(it, { inline: true, url: it.thumb }))}" onerror="this.remove()">` : "";
     const light = isLight();
     const d = it.direct;
-    const lightActions = d
+    const stream = isStream(it);
+    const lightActions = stream
+      ? `<div class="stream-box" data-stream="${esc(it.url)}">
+           <fieldset class="quality"><legend>Quality</legend><span class="muted-note">Reading the stream…</span></fieldset>
+           <div class="reel-actions">
+             <button type="button" class="btn primary stream-dl" disabled>${ICON.down.replace("<svg", '<svg width="18" height="18"')}Download</button>
+             <div class="job" hidden><div class="meter"><i></i></div><p></p></div>
+           </div>
+         </div>`
+      : d
       ? `<div class="reel-actions"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noreferrer noopener" download>${ICON.down.replace("<svg", '<svg width="18" height="18"')}Download${d.height ? " " + d.height + "p" : ""}</a>
          <p class="muted-note">Straight from the site, and its link expires after a while, so download it now. If the video opens in a new tab instead, IDM will offer to grab it, or use the ⋮ menu on the video and choose Download.</p></div>`
       : `<div class="reel-actions"><a class="btn ghost" href="${esc(it.url)}" target="_blank" rel="noreferrer noopener">Open on the site</a>
@@ -320,7 +330,7 @@
     return `<article class="reel" data-id="${it.id}">
       <div class="reel-thumb"><span class="ph">${it.kind === "audio" ? ICON.wave : ICON.film}</span>${thumb}${it.duration ? `<span class="dur">${duration(it.duration)}</span>` : ""}</div>
       <div class="reel-body">
-        <h3>${esc(it.title || it.url)}</h3>
+        <h3>${esc(it.title || streamName(it.url) || it.url)}</h3>
         <p class="meta">${meta}</p>
         ${light ? lightActions : `<fieldset class="quality"><legend>Quality</legend>${pills}</fieldset>
         <div class="reel-actions">
@@ -329,6 +339,82 @@
         </div>`}
       </div>
     </article>`;
+  }
+
+  // ---------- streams (light version: saved in the browser) ----------
+  const isStream = (it) => it.kind === "stream" || /\.m3u8(\?|$)/i.test(it.url);
+  function streamName(url) {
+    try {
+      const parts = decodeURIComponent(new URL(url).pathname).split("/").filter(Boolean);
+      const clean = (x) => (x || "").replace(/\.(m3u8|mpd)$/i, "").replace(/[_-]+/g, " ").replace(/^,|,$/g, "").trim();
+      let name = clean(parts.pop());
+      if (/^(master|index|playlist|main|manifest|video|stream|prog_index|chunklist.*)$/i.test(name)) {
+        const folder = clean(parts.pop());
+        name = folder && !/^[\d,.]+$/.test(folder) ? folder : (state.page?.title || name);
+      }
+      return name;
+    } catch { return ""; }
+  }
+  const streamJobs = new Map();
+  async function loadStreams() {
+    if (!window.DEAIStream) return;
+    for (const box of $$("#sections .stream-box")) {
+      const card = box.closest(".reel"); const it = state.byId.get(card.dataset.id);
+      const fs = $(".quality", box), btn = $(".stream-dl", box);
+      try {
+        let list = await DEAIStream.variants(box.dataset.stream);
+        const withAudio = list.filter((v) => !v.separateAudio);
+        if (!withAudio.length) throw new DEAIStream.StreamError("audio", "This stream keeps its sound in a separate track, which the light version can't join. The full version of DE-AI can.");
+        list = withAudio;
+        it._variants = list;
+        fs.innerHTML = `<legend>Quality</legend>` + list.map((v, i) => {
+          const label = v.height ? `${v.height}p` : "Original";
+          const rate = v.bandwidth ? ` · ${(v.bandwidth / 1e6).toFixed(1)} Mbit/s` : "";
+          return `<label><input type="radio" name="sq-${it.id}" value="${i}"${i === 0 ? " checked" : ""}><span>${esc(label)}${i === 0 ? " (best)" : ""}<small class="rate">${esc(rate)}</small></span></label>`;
+        }).join("");
+        btn.disabled = false;
+      } catch (e) {
+        fs.innerHTML = `<legend>Quality</legend><span class="muted-note">${esc(e.message)}</span>`;
+        btn.outerHTML = `<button type="button" class="btn ghost stream-copy" data-url="${esc(box.dataset.stream)}">Copy stream link</button>`;
+      }
+    }
+  }
+  async function downloadStream(card) {
+    const it = state.byId.get(card.dataset.id);
+    const box = $(".stream-box", card), btn = $(".stream-dl", box), job = $(".job", box);
+    const bar = $(".meter i", job), msg = $("p", job);
+    const running = streamJobs.get(it.id);
+    if (running) { running.abort(); return; }
+    const idx = +($(`input[name="sq-${it.id}"]:checked`, box)?.value || 0);
+    const v = it._variants[idx];
+    const ctrl = new AbortController(); streamJobs.set(it.id, ctrl);
+    $$(".quality input", box).forEach((i) => (i.disabled = true));
+    btn.textContent = "Cancel"; btn.classList.replace("primary", "ghost");
+    job.hidden = false; job.className = "job"; bar.style.width = "1%"; msg.textContent = "Reading the stream…";
+    try {
+      const res = await DEAIStream.save(v.url, {
+        signal: ctrl.signal,
+        onProgress: (p) => {
+          bar.style.width = Math.max(1, Math.round((p.done / p.total) * 100)) + "%";
+          msg.textContent = `Piece ${p.done} of ${p.total} · ${bytes(p.bytes)} of about ${bytes(p.estimate)} · ${bytes(p.speed)}/s`;
+        },
+      });
+      const base = (it.title || streamName(it.url) || "video").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 120);
+      const name = `${base}${v.height ? " " + v.height + "p" : ""}.${res.ext}`;
+      const href = URL.createObjectURL(res.blob);
+      const a = document.createElement("a"); a.href = href; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 60000);
+      job.classList.add("done"); bar.style.width = "100%";
+      msg.textContent = `Saved ${name} (${bytes(res.bytes)}).` + (res.ext === "ts" ? " It's in .ts format; VLC plays it." : "");
+    } catch (e) {
+      job.classList.add("error");
+      msg.textContent = e.name === "AbortError" ? "Cancelled." : e.message;
+    } finally {
+      streamJobs.delete(it.id);
+      btn.innerHTML = `${ICON.down.replace("<svg", '<svg width="18" height="18"')}Download`; btn.classList.replace("ghost", "primary");
+      $$(".quality input", box).forEach((i) => (i.disabled = false));
+    }
   }
 
   function wirePreviews() {
@@ -512,6 +598,9 @@
   $("#sections").addEventListener("click", (e) => {
     const t = e.target;
     const reelBtn = t.closest(".reel-dl"); if (reelBtn) { downloadReel(reelBtn.closest(".reel")); return; }
+    const sBtn = t.closest(".stream-dl"); if (sBtn) { downloadStream(sBtn.closest(".reel")); return; }
+    const cBtn = t.closest(".stream-copy");
+    if (cBtn) { navigator.clipboard.writeText(cBtn.dataset.url).then(() => toast("Stream link copied. IDM and VLC can open it."), () => toast("Couldn't copy the link.", "error")); return; }
     const sel = t.closest(".sel-group");
     if (sel) {
       const ids = groupFrames(sel.closest(".group"));
